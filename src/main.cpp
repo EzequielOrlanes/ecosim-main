@@ -28,22 +28,19 @@ const double CARNIVORE_MOVE_PROBABILITY = 0.5;
 const double CARNIVORE_EAT_PROBABILITY = 1.0;
 
 // Type definitions
-enum entity_type_t
-{
+enum entity_type_t {
     empty,
     plant,
     herbivore,
     carnivore
 };
 
-struct pos_t
-{
+struct pos_t {
     uint32_t i;
     uint32_t j;
 };
 
-struct entity_t
-{
+struct entity_t {
     entity_type_t type;
     int32_t energy;
     int32_t age;
@@ -51,94 +48,95 @@ struct entity_t
 
 // Auxiliary code to convert the entity_type_t enum to a string
 NLOHMANN_JSON_SERIALIZE_ENUM(entity_type_t, {
-                                                {empty, " "},
-                                                {plant, "P"},
-                                                {herbivore, "H"},
-                                                {carnivore, "C"},
-                                            })
+{empty, " "},
+{plant, "P"},
+{herbivore, "H"},
+{carnivore, "C"},
+})
 
 // Auxiliary code to convert the entity_t struct to a JSON object
-namespace nlohmann
-{
-    void to_json(nlohmann::json &j, const entity_t &e)
-    {
+namespace nlohman {
+    void to_json(nlohmann::json &j, const entity_t &e) {
         j = nlohmann::json{{"type", e.type}, {"energy", e.energy}, {"age", e.age}};
     }
 }
-
-static generate_num()
-{
-    static std::random_device rd;
-    return std::mt19937 gen(rd());
+//That's create a random number each time that's called.
+std::mt19937 createRandomGenerator() {
+  static std::random_device rd;
+  return std::mt19937(rd());  
 }
+
+
+bool check_age(entity_t &current_entity){
+    if(current_entity.type == plant && current_entity.age >= PLANT_MAXIMUM_AGE) return true;
+    if(current_entity.type == herbivore && current_entity.age >= HERBIVORE_MAXIMUM_AGE) return true;
+    if (current_entity.type == carnivore && current_entity.age >= CARNIVORE_MAXIMUM_AGE) return true;
+
+
+}
+
 // Grid that contains the entities
 static std::vector<std::vector<entity_t>> entity_grid;
-int main()
-{
+int main() {  
     crow::SimpleApp app;
     // Endpoint to serve the HTML page
     CROW_ROUTE(app, "/")
-    ([](crow::request &, crow::response &res)
-     {
+    ([](crow::request &, crow::response &res) {
         // Return the HTML content here
         res.set_static_file_info_unsafe("../public/index.html");
         res.end(); });
-
     CROW_ROUTE(app, "/start-simulation")
-        .methods("POST"_method)([](crow::request &req, crow::response &res)
-                                { 
+        .methods("POST"_method)([](crow::request &req, crow::response &res) { 
         // Parse the JSON request body
         nlohmann::json request_body = nlohmann::json::parse(req.body);
        // Validate the request body 
         uint32_t total_entities = (uint32_t)request_body["plants"] + (uint32_t)request_body["herbivores"] + (uint32_t)request_body["carnivores"];
-        if (total_entities > NUM_ROWS * NUM_ROWS) {
+    if (total_entities > NUM_ROWS * NUM_ROWS) {
         res.code = 400;
         res.body = "Too many entities";
         res.end();
         return;
-        }
+    }
         // Clear the entity grid
-        entity_grid.clear();
-        entity_grid.assign(NUM_ROWS, std::vector<entity_t>(NUM_ROWS, { empty, 0, 0}));
+    entity_grid.clear();
+    entity_grid.assign(NUM_ROWS, std::vector<entity_t>(NUM_ROWS, { empty, 0, 0}));
 
-        // Create the entities
-        // <YOUR CODE HERE>
+    // Create the entities
+    // <YOUR CODE HERE>
         int row, col;
-            // for( int i = 0; i < (uint32_t)request_body["plants"]; i++){
-            for(auto plants : (uint32_t)request_body["plants"]){
+        auto numRandom = createRandomGenerator();
+        for( int i = 0; i < (uint32_t)request_body["plants"]; i++) {   
             std::uniform_int_distribution<> dis(0, 14);
-            row = dis(generate_num());
-            col = dis(generate_num());
+            row = dis(numRandom);
+            col = dis(numRandom);
             while(!entity_grid[row][col].type == empty){
-                row = dis(generate_num());
-                col = dis(generate_num());
+                row = dis(numRandom);
+                col = dis(numRandom);
             }
             entity_grid[row][col].type = plant;
             entity_grid[row][col].age = 0; 
         }
 
-            for(auto plants : (uint32_t)request_body["herbivores"]){
+            for( int i = 0; i < (uint32_t)request_body["herbivores"]; i++){
             std::uniform_int_distribution<> dis(0, 14);
-            row = dis(generate_num());
-            col = dis(generate_num());
+            row = dis(numRandom);
+            col = dis(numRandom);
             while(!entity_grid[row][col].type == empty){
-                row = dis(generate_num());
-                col = dis(generate_num());
+                row = dis(numRandom);
+                col = dis(numRandom);
             }
             entity_grid[row][col].type = herbivore;
             entity_grid[row][col].age = 0;
             entity_grid[row][col].energy = 100; 
         }
 
-
-            for(auto plants : (uint32_t)request_body["carnivores"]){
+        for( int i = 0; i < (uint32_t)request_body["carnivores"]; i++){
             std::uniform_int_distribution<> dis(0, 14);
-            row = dis(generate_num());
-            col = dis(generate_num());
-
+            row = dis(numRandom);
+            col = dis(numRandom);
             while(!entity_grid[row][col].type == empty){
-                row = dis(generate_num());
-                col = dis(generate_num());
+                row = dis(numRandom);
+                col = dis(numRandom);
             }
             entity_grid[row][col].type = carnivore;
             entity_grid[row][col].age = 0;
@@ -150,50 +148,35 @@ int main()
         res.body = json_grid.dump();
         res.end(); });
 
-    // Endpoint to process HTTP GET requests for the next simulation iteration
-    CROW_ROUTE(app, "/next-iteration")
+        // Endpoint to process HTTP GET requests for the next simulation iteration
+        CROW_ROUTE(app, "/next-iteration")
         .methods("GET"_method)([]()
                                {
         // Simulate the next iteration
         // Iterate over the entity grid and simulate the behaviour of each entity
         // <YOUR CODE HERE>
         // Return the JSON representation of the entity grid
-
-         std::vector<std::vector<entity_t>> updated_grid = entity_grid;
-    
-    for (uint32_t i = 0; i < NUM_ROWS; ++i) {
-        for (uint32_t j = 0; j < NUM_ROWS; ++j) {
-            entity_t &current_entity = entity_grid[i][j];
-            entity_t &updated_entity = updated_grid[i][j];
-            
-            // Skip empty cells
-            if (current_entity.type == empty) {
-                continue;
-            }
-            // Update the age
-            updated_entity.age++;
-            
-            // Check if the entity reaches its maximum age
-            if (current_entity.type == plant && current_entity.age >= PLANT_MAXIMUM_AGE) {
-                // Decompose the plant
-                updated_entity.type = empty;
-                updated_entity.energy = 0;
-            }
-            else if (current_entity.type == herbivore && current_entity.age >= HERBIVORE_MAXIMUM_AGE) {
-                // Herbivore reaches its maximum age, dies
-                updated_entity.type = empty;
-                updated_entity.energy = 0;
-            }
-            else if (current_entity.type == carnivore && current_entity.age >= CARNIVORE_MAXIMUM_AGE) {
-                // Carnivore reaches its maximum age, dies
-                updated_entity.type = empty;
-                updated_entity.energy = 0;
-            } else if (current_entity.energy <= 0 && current_entity.type != plant) {
-                updated_entity.type = empty;
-                updated_entity.energy = 0;
-                updated_entity.age = 0;
-            }
-            else {
+    std::vector<std::vector<entity_t>> updated_grid = entity_grid;
+        for (uint32_t i = 0; i < NUM_ROWS; ++i) {
+            for (uint32_t j = 0; j < NUM_ROWS; ++j) {
+                entity_t &current_entity = entity_grid[i][j];
+                entity_t &updated_entity = updated_grid[i][j]; 
+                      
+                // Skip empty cells
+                if (current_entity.type == empty) continue;
+                // Update the age
+                updated_entity.age++;
+                //Cheking if age to entities and killer when getting the age.
+                if(check_age(current_entity)){
+                     updated_entity.type = empty;
+                     updated_entity.energy = 0;
+                }
+                if(current_entity.energy <= 0){
+                    updated_entity.type = empty;
+                    updated_entity.energy = 0;
+                    updated_entity.age = 0;
+                }
+                else {
                 // Implement growth and additional requirements for plants
                 if (current_entity.type == plant) {
                     if ((rand() / (double)RAND_MAX) < PLANT_REPRODUCTION_PROBABILITY) {
@@ -204,19 +187,15 @@ int main()
                             {i, j - 1}, // Célula à esquerda
                             {i, j + 1}  // Célula à direita
                         };
-
                         // Embaralha aleatoriamente as posições das células vizinhas
                         std::random_shuffle(adjacent_cells.begin(), adjacent_cells.end());
-
                         for (const pos_t &adjacent_pos : adjacent_cells) {
                             uint32_t adjacent_i = adjacent_pos.i;
                             uint32_t adjacent_j = adjacent_pos.j;
-
                             // Verifica se a célula vizinha está dentro dos limites do grid
                             if (adjacent_i >= 0 && adjacent_i < NUM_ROWS && adjacent_j >= 0 
                                 && adjacent_j < NUM_ROWS) {
                                 entity_t &target_entity = updated_grid[adjacent_i][adjacent_j];
-
                                 // Verifica se a célula vizinha está vazia (empty)
                                 if (target_entity.type == empty) {
                                     // Cria uma nova planta na célula vizinha vazia
@@ -235,10 +214,10 @@ int main()
                         if ((rand() / (double)RAND_MAX) < HERBIVORE_MOVE_PROBABILITY) {
                             // Calcula as posições das células vizinhas (acima, abaixo, esquerda, direita)
                             std::vector<pos_t> adjacent_cells = {
-                                {i - 1, j}, // Célula acima
-                                {i + 1, j}, // Célula abaixo
-                                {i, j - 1}, // Célula à esquerda
-                                {i, j + 1}  // Célula à direita
+                                {i - 1, j}, // UP
+                                {i + 1, j}, // DOWN
+                                {i, j - 1}, // LEFT
+                                {i, j + 1}  // RIGHT
                             };
 
                             // Embaralha aleatoriamente as posições das células vizinhas
@@ -247,12 +226,10 @@ int main()
                             for (const pos_t &adjacent_pos : adjacent_cells) {
                                 uint32_t adjacent_i = adjacent_pos.i;
                                 uint32_t adjacent_j = adjacent_pos.j;
-
                                 // Verifica se a célula vizinha está dentro dos limites do grid
                                 if (adjacent_i >= 0 && adjacent_i < NUM_ROWS && adjacent_j >= 0 
                                     && adjacent_j < NUM_ROWS) {
                                     entity_t &target_entity = updated_grid[adjacent_i][adjacent_j];
-
                                     // Verifica se a célula vizinha está vazia (empty) e não contém um carnívoro
                                     if (target_entity.type == empty) {
                                         // Move o herbívoro para a célula vizinha
@@ -288,7 +265,6 @@ int main()
                                 if (adjacent_i >= 0 && adjacent_i < NUM_ROWS && adjacent_j >= 0 
                                     && adjacent_j < NUM_ROWS) {
                                     entity_t &target_entity = updated_grid[adjacent_i][adjacent_j];
-
                                     // Verifica se a célula adjacente contém uma planta
                                     if (target_entity.type == plant) {
                                         // O herbívoro come a planta
@@ -302,7 +278,6 @@ int main()
                             }
                         }
                     }
-                    
                     // Implement reproduction and energy update for herbivores
                     if (current_entity.type == herbivore) {
                         if (current_entity.energy > THRESHOLD_ENERGY_FOR_REPRODUCTION && 
