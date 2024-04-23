@@ -7,6 +7,8 @@
 #include <thread>
 #include <algorithm>
 
+using namespace std;
+
 static const uint32_t NUM_ROWS = 15;
 // Constants Initial Values
 const uint32_t INITIAL_ENERGY_HERBIVORE = 100;
@@ -62,18 +64,52 @@ namespace nlohman {
 }
 //That's create a random number each time that's called.
 std::mt19937 createRandomGenerator() {
-  static std::random_device rd;
-  return std::mt19937(rd());  
+  static random_device rd;
+  return mt19937(rd());  
 }
 
-
+//Cheking when age timing end and return true if this timing of life ending.
 bool check_age(entity_t &current_entity){
     if(current_entity.type == plant && current_entity.age >= PLANT_MAXIMUM_AGE) return true;
     if(current_entity.type == herbivore && current_entity.age >= HERBIVORE_MAXIMUM_AGE) return true;
     if (current_entity.type == carnivore && current_entity.age >= CARNIVORE_MAXIMUM_AGE) return true;
-
-
 }
+
+bool limits_grid(uint32_t adjacent_i, uint32_t adjacent_j){
+      if (adjacent_i >= 0 && adjacent_i < NUM_ROWS && adjacent_j >= 0 && adjacent_j < NUM_ROWS) return true; 
+}
+
+void *growing_plant(updated_grid[i][j]){
+       if ((rand() / (double)RAND_MAX) < PLANT_REPRODUCTION_PROBABILITY) {
+                        // Calcula as posições das células vizinhas (acima, abaixo, esquerda, direita)
+                        std::vector<pos_t> adjacent_cells = {
+                            {i - 1, j}, // Célula acima
+                            {i + 1, j}, // Célula abaixo
+                            {i, j - 1}, // Célula à esquerda
+                            {i, j + 1}  // Célula à direita
+                        };
+                        // Embaralha aleatoriamente as posições das células vizinhas
+                        std::random_shuffle(adjacent_cells.begin(), adjacent_cells.end());
+                        for (const pos_t &adjacent_pos : adjacent_cells) {
+                            uint32_t adjacent_i = adjacent_pos.i;
+                            uint32_t adjacent_j = adjacent_pos.j;
+                            // Verifica se a célula vizinha está dentro dos limites do grid
+                            if (limits_grid(adjacent_i, adjacent_j)) {
+                                entity_t &target_entity = updated_grid[adjacent_i][adjacent_j];
+                                // Verifica se a célula vizinha está vazia (empty)
+                                if (target_entity.type == entity_type_t::empty) {
+                                    // Cria uma nova planta na célula vizinha vazia
+                                    target_entity.type = plant;
+                                    target_entity.energy = 0; // A energia da planta pode ser mantida como 0
+                                    target_entity.age = 0;    // A idade da planta é reiniciada
+                                    break; // O crescimento da planta ocorreu com sucesso
+                                }
+                            }
+                        }
+                    }
+}
+
+
 
 // Grid that contains the entities
 static std::vector<std::vector<entity_t>> entity_grid;
@@ -97,10 +133,11 @@ int main() {
         res.end();
         return;
     }
-        // Clear the entity grid
+    // Clear the entity grid
     entity_grid.clear();
-    entity_grid.assign(NUM_ROWS, std::vector<entity_t>(NUM_ROWS, { empty, 0, 0}));
-
+    entity_grid.assign(NUM_ROWS, vector<entity_t>(NUM_ROWS, { entity_type_t::empty, 0, 0}));
+    //threads to animals
+    thread herbivores_thread(&growing_plant);
     // Create the entities
     // <YOUR CODE HERE>
         int row, col;
@@ -109,19 +146,18 @@ int main() {
             std::uniform_int_distribution<> dis(0, 14);
             row = dis(numRandom);
             col = dis(numRandom);
-            while(!entity_grid[row][col].type == empty){
+            while(!entity_grid[row][col].type == entity_type_t::empty){
                 row = dis(numRandom);
                 col = dis(numRandom);
             }
             entity_grid[row][col].type = plant;
             entity_grid[row][col].age = 0; 
         }
-
-            for( int i = 0; i < (uint32_t)request_body["herbivores"]; i++){
+        for( int i = 0; i < (uint32_t)request_body["herbivores"]; i++){
             std::uniform_int_distribution<> dis(0, 14);
             row = dis(numRandom);
             col = dis(numRandom);
-            while(!entity_grid[row][col].type == empty){
+            while(!entity_grid[row][col].type == entity_type_t::empty){
                 row = dis(numRandom);
                 col = dis(numRandom);
             }
@@ -129,12 +165,11 @@ int main() {
             entity_grid[row][col].age = 0;
             entity_grid[row][col].energy = 100; 
         }
-
         for( int i = 0; i < (uint32_t)request_body["carnivores"]; i++){
             std::uniform_int_distribution<> dis(0, 14);
             row = dis(numRandom);
             col = dis(numRandom);
-            while(!entity_grid[row][col].type == empty){
+            while(!entity_grid[row][col].type == entity_type_t::empty){
                 row = dis(numRandom);
                 col = dis(numRandom);
             }
@@ -142,16 +177,13 @@ int main() {
             entity_grid[row][col].age = 0;
             entity_grid[row][col].energy = 100;
         }
-
         // Return the JSON representation of the entity grid
         nlohmann::json json_grid = entity_grid; 
         res.body = json_grid.dump();
         res.end(); });
-
         // Endpoint to process HTTP GET requests for the next simulation iteration
         CROW_ROUTE(app, "/next-iteration")
-        .methods("GET"_method)([]()
-                               {
+        .methods("GET"_method)([](){
         // Simulate the next iteration
         // Iterate over the entity grid and simulate the behaviour of each entity
         // <YOUR CODE HERE>
@@ -161,56 +193,27 @@ int main() {
             for (uint32_t j = 0; j < NUM_ROWS; ++j) {
                 entity_t &current_entity = entity_grid[i][j];
                 entity_t &updated_entity = updated_grid[i][j]; 
-                      
                 // Skip empty cells
-                if (current_entity.type == empty) continue;
+                if (current_entity.type == entity_type_t::empty) continue;
                 // Update the age
                 updated_entity.age++;
                 //Cheking if age to entities and killer when getting the age.
                 if(check_age(current_entity)){
-                     updated_entity.type = empty;
+                     updated_entity.type = entity_type_t::empty;
                      updated_entity.energy = 0;
                 }
                 if(current_entity.energy <= 0){
-                    updated_entity.type = empty;
+                    updated_entity.type = entity_type_t::empty;
                     updated_entity.energy = 0;
                     updated_entity.age = 0;
                 }
                 else {
-                // Implement growth and additional requirements for plants
+                // Implement growth and additional requirements to plants
                 if (current_entity.type == plant) {
-                    if ((rand() / (double)RAND_MAX) < PLANT_REPRODUCTION_PROBABILITY) {
-                        // Calcula as posições das células vizinhas (acima, abaixo, esquerda, direita)
-                        std::vector<pos_t> adjacent_cells = {
-                            {i - 1, j}, // Célula acima
-                            {i + 1, j}, // Célula abaixo
-                            {i, j - 1}, // Célula à esquerda
-                            {i, j + 1}  // Célula à direita
-                        };
-                        // Embaralha aleatoriamente as posições das células vizinhas
-                        std::random_shuffle(adjacent_cells.begin(), adjacent_cells.end());
-                        for (const pos_t &adjacent_pos : adjacent_cells) {
-                            uint32_t adjacent_i = adjacent_pos.i;
-                            uint32_t adjacent_j = adjacent_pos.j;
-                            // Verifica se a célula vizinha está dentro dos limites do grid
-                            if (adjacent_i >= 0 && adjacent_i < NUM_ROWS && adjacent_j >= 0 
-                                && adjacent_j < NUM_ROWS) {
-                                entity_t &target_entity = updated_grid[adjacent_i][adjacent_j];
-                                // Verifica se a célula vizinha está vazia (empty)
-                                if (target_entity.type == empty) {
-                                    // Cria uma nova planta na célula vizinha vazia
-                                    target_entity.type = plant;
-                                    target_entity.energy = 0; // A energia da planta pode ser mantida como 0
-                                    target_entity.age = 0;    // A idade da planta é reiniciada
-                                    break; // O crescimento da planta ocorreu com sucesso
-                                }
-                            }
-                        }
-                    }
+                    *growing_plant(updated_grid[i][j]);
                 }
-
-                    // Implement movement for herbivores
-                    if (current_entity.type == herbivore) {
+                // Implement movementing to herbivores
+                if (current_entity.type == herbivore) {
                         if ((rand() / (double)RAND_MAX) < HERBIVORE_MOVE_PROBABILITY) {
                             // Calcula as posições das células vizinhas (acima, abaixo, esquerda, direita)
                             std::vector<pos_t> adjacent_cells = {
@@ -219,21 +222,18 @@ int main() {
                                 {i, j - 1}, // LEFT
                                 {i, j + 1}  // RIGHT
                             };
-
                             // Embaralha aleatoriamente as posições das células vizinhas
-                            std::random_shuffle(adjacent_cells.begin(), adjacent_cells.end());
-
+                            random_shuffle(adjacent_cells.begin(), adjacent_cells.end());
                             for (const pos_t &adjacent_pos : adjacent_cells) {
                                 uint32_t adjacent_i = adjacent_pos.i;
                                 uint32_t adjacent_j = adjacent_pos.j;
                                 // Verifica se a célula vizinha está dentro dos limites do grid
-                                if (adjacent_i >= 0 && adjacent_i < NUM_ROWS && adjacent_j >= 0 
-                                    && adjacent_j < NUM_ROWS) {
+                                if (limits_grid(adjacent_i, adjacent_j)) {
                                     entity_t &target_entity = updated_grid[adjacent_i][adjacent_j];
                                     // Verifica se a célula vizinha está vazia (empty) e não contém um carnívoro
-                                    if (target_entity.type == empty) {
+                                    if (target_entity.type == entity_type_t::empty) {
                                         // Move o herbívoro para a célula vizinha
-                                        updated_entity.type = empty;
+                                        updated_entity.type = entity_type_t::empty;
                                         updated_entity.energy = 0; // Custo de energia pelo movimento
                                         target_entity.type = herbivore;
                                         target_entity.energy = current_entity.energy - 5;
@@ -244,33 +244,29 @@ int main() {
                             }
                         }
                     }
-                    
-                    // Example: Implement eating for herbivores
+                    // Implement eating for herbivores
                     if (current_entity.type == herbivore) {
                         if ((rand() / (double)RAND_MAX) < HERBIVORE_EAT_PROBABILITY) {
                             // Calcula as posições das células vizinhas (acima, abaixo, esquerda, direita)
                             std::vector<pos_t> adjacent_cells = {
-                                {i - 1, j}, // Célula acima
-                                {i + 1, j}, // Célula abaixo
-                                {i, j - 1}, // Célula à esquerda
-                                {i, j + 1}  // Célula à direita
+                                {i - 1, j}, // UP
+                                {i + 1, j}, // DOWN
+                                {i, j - 1}, // LEFT
+                                {i, j + 1}  // RIGHT
                             };
-
                             // Verifica se alguma célula adjacente contém uma planta
                             for (const pos_t &adjacent_pos : adjacent_cells) {
                                 uint32_t adjacent_i = adjacent_pos.i;
                                 uint32_t adjacent_j = adjacent_pos.j;
-
                                 // Verifica se a célula vizinha está dentro dos limites do grid
-                                if (adjacent_i >= 0 && adjacent_i < NUM_ROWS && adjacent_j >= 0 
-                                    && adjacent_j < NUM_ROWS) {
+                                if (limits_grid(adjacent_i, adjacent_j)) {
                                     entity_t &target_entity = updated_grid[adjacent_i][adjacent_j];
                                     // Verifica se a célula adjacente contém uma planta
                                     if (target_entity.type == plant) {
                                         // O herbívoro come a planta
                                         updated_entity.energy += 30;
                                         current_entity.energy += 30; // Ganho de energia ao comer uma planta
-                                        target_entity.type = empty; // A planta é removida
+                                        target_entity.type = entity_type_t::empty; // A planta é removida
                                         target_entity.energy = 0;   // A célula fica vazia
                                         break; // O herbívoro comeu com sucesso
                                     }
@@ -286,26 +282,21 @@ int main() {
                             if (current_entity.energy >= 10) {
                                 // Calcula as posições das células vizinhas (acima, abaixo, esquerda, direita)
                                 std::vector<pos_t> adjacent_cells = {
-                                    {i - 1, j}, // Célula acima
-                                    {i + 1, j}, // Célula abaixo
-                                    {i, j - 1}, // Célula à esquerda
-                                    {i, j + 1}  // Célula à direita
+                                    {i - 1, j}, // UP
+                                    {i + 1, j}, // DOWN
+                                    {i, j - 1}, // LEFT
+                                    {i, j + 1}  // RIGHT
                                 };
-
                                 // Embaralha aleatoriamente as posições das células vizinhas
                                 std::random_shuffle(adjacent_cells.begin(), adjacent_cells.end());
-
                                 for (const pos_t &adjacent_pos : adjacent_cells) {
                                     uint32_t adjacent_i = adjacent_pos.i;
                                     uint32_t adjacent_j = adjacent_pos.j;
-
                                     // Verifica se a célula vizinha está dentro dos limites do grid
-                                    if (adjacent_i >= 0 && adjacent_i < NUM_ROWS && adjacent_j >= 0 
-                                        && adjacent_j < NUM_ROWS) {
+                                    if (limits_grid(adjacent_i, adjacent_j)) {
                                         entity_t &target_entity = updated_grid[adjacent_i][adjacent_j];
-
                                         // Verifica se a célula vizinha está vazia (empty)
-                                        if (target_entity.type == empty) {
+                                        if (target_entity.type == entity_type_t::empty) {
                                             // O herbívoro se reproduz
                                             updated_entity.energy -= 10;
                                             current_entity.energy -= 10; // Custo de energia da reprodução
@@ -320,31 +311,26 @@ int main() {
                         }
                     }
                 }
-
                 // Implement movement for carnivores
                 if (current_entity.type == carnivore) {
                     if ((rand() / (double)RAND_MAX) < CARNIVORE_MOVE_PROBABILITY) {
                         // Calcula as posições das células vizinhas (acima, abaixo, esquerda, direita)
                         std::vector<pos_t> adjacent_cells = {
-                            {i - 1, j}, // Célula acima
-                            {i + 1, j}, // Célula abaixo
-                            {i, j - 1}, // Célula à esquerda
-                            {i, j + 1}  // Célula à direita
+                            {i - 1, j}, // UP
+                            {i + 1, j}, // DOWN
+                            {i, j - 1}, // LEFT
+                            {i, j + 1}  // RIGHT
                         };
-
                         // Embaralha aleatoriamente as posições das células vizinhas
                         std::random_shuffle(adjacent_cells.begin(), adjacent_cells.end());
-
                         for (const pos_t &adjacent_pos : adjacent_cells) {
                             uint32_t adjacent_i = adjacent_pos.i;
                             uint32_t adjacent_j = adjacent_pos.j;
-
                             // Verifica se a célula vizinha está dentro dos limites do grid
-                            if (adjacent_i >= 0 && adjacent_i < NUM_ROWS && adjacent_j >= 0 && adjacent_j < NUM_ROWS) {
+                            if (limits_grid(adjacent_i, adjacent_j)) {
                                 entity_t &target_entity = updated_grid[adjacent_i][adjacent_j];
-
                                 // Move o carnívoro para a célula vizinha
-                                updated_entity.type = empty;
+                                updated_entity.type = entity_type_t::empty;
                                 updated_entity.energy = 0; // Custo de energia pelo movimento
                                 target_entity.type = carnivore;
                                 target_entity.energy = current_entity.energy - 5;
@@ -354,7 +340,6 @@ int main() {
                         }
                     }
                 }
-
                 // Implement eating for carnivores
                 if (current_entity.type == carnivore) {
                     // Verifica se alguma célula adjacente contém um herbívoro
@@ -362,52 +347,44 @@ int main() {
                         for (int dy = -1; dy <= 1; dy++) {
                             uint32_t adjacent_i = i + dx;
                             uint32_t adjacent_j = j + dy;
-
                             // Verifica se a célula vizinha está dentro dos limites do grid
-                            if (adjacent_i >= 0 && adjacent_i < NUM_ROWS && adjacent_j >= 0 
-                                && adjacent_j < NUM_ROWS) {
+                            if (limits_grid(adjacent_i, adjacent_j)) {
                                 entity_t &target_entity = updated_grid[adjacent_i][adjacent_j];
-
                                 // Verifica se a célula adjacente contém um herbívoro
                                 if (target_entity.type == herbivore) {
                                     // O carnívoro come o herbívoro
                                     updated_entity.energy += 20;
                                     current_entity.energy += 20; // Ganho de energia ao comer um herbívoro
-                                    target_entity.type = empty;  // O herbívoro é removido
+                                    target_entity.type = entity_type_t::empty;  // O herbívoro é removido
                                     target_entity.energy = 0;    // A célula fica vazia
                                 }
                             }
                         }
                     }
                 }
-
                 // Implement reproduction and energy update for carnivores
                 if (current_entity.type == carnivore) {
                     if (current_entity.energy > THRESHOLD_ENERGY_FOR_REPRODUCTION && 
                         (rand() / (double)RAND_MAX) < CARNIVORE_REPRODUCTION_PROBABILITY) {
                         // Verifica se a energia do carnívoro é suficiente para reprodução
-                        if (current_entity.energy >= 10) {
+                            if (current_entity.energy >= 10) {
                             // Calcula as posições das células vizinhas (acima, abaixo, esquerda, direita)
                             std::vector<pos_t> adjacent_cells = {
-                                {i - 1, j}, // Célula acima
-                                {i + 1, j}, // Célula abaixo
-                                {i, j - 1}, // Célula à esquerda
-                                {i, j + 1}  // Célula à direita
+                                {i - 1, j}, // UP
+                                {i + 1, j}, // DOWN
+                                {i, j - 1}, // LEFT
+                                {i, j + 1}  // RIGHT
                             };
-
                             // Embaralha aleatoriamente as posições das células vizinhas
                             std::random_shuffle(adjacent_cells.begin(), adjacent_cells.end());
-
                             for (const pos_t &adjacent_pos : adjacent_cells) {
                                 uint32_t adjacent_i = adjacent_pos.i;
                                 uint32_t adjacent_j = adjacent_pos.j;
-
                                 // Verifica se a célula vizinha está dentro dos limites do grid
-                                if (adjacent_i >= 0 && adjacent_i < NUM_ROWS && adjacent_j >= 0 && adjacent_j < NUM_ROWS) {
+                                if (limits_grid(adjacent_i, adjacent_j)) {
                                     entity_t &target_entity = updated_grid[adjacent_i][adjacent_j];
-
                                     // Verifica se a célula vizinha está vazia (empty)
-                                    if (target_entity.type == empty) {
+                                    if (target_entity.type == entity_type_t::empty) {
                                         // O carnívoro se reproduz
                                         updated_entity.energy -= 10;
                                         current_entity.energy -= 10; // Custo de energia da reprodução
@@ -423,6 +400,7 @@ int main() {
                 }
             }
         }
+    herbivores_thread.join();
     // Update the entity grid with the updated entities
     entity_grid = updated_grid;
     nlohmann::json json_grid = entity_grid; 
